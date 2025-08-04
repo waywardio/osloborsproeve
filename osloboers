@@ -1,0 +1,82 @@
+from zipfile import ZipFile
+from pathlib import Path
+
+project_dir = Path("oslobors-lstm-predictor")
+project_dir.mkdir(exist_ok=True)
+
+# app.py
+app_code = '''import streamlit as st
+import yfinance as yf
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense
+
+st.title("📈 LSTM-prediksjon for Oslo Børs (topp 10 tickere)")
+
+tickers = ["EQNR.OL","DNB.OL","KOG.OL","TEL.OL","AKRBP.OL","GJF.OL","NHY.OL","ORK.OL","MOWI.OL","YAR.OL"]
+look_back = 60
+
+predictions = {}
+for tick in tickers:
+    data = yf.download(tick, period="2y", interval="1d", progress=False)
+    if len(data) < look_back + 1:
+        continue
+    close = data['Close'].values.reshape(-1,1)
+    scaler = MinMaxScaler((0,1))
+    scaled = scaler.fit_transform(close)
+    X, y = [], []
+    for i in range(look_back, len(scaled)):
+        X.append(scaled[i-look_back:i,0])
+        y.append(scaled[i,0])
+    X, y = np.array(X), np.array(y)
+    X = X.reshape(X.shape[0], X.shape[1], 1)
+    model = Sequential([LSTM(50, return_sequences=True, input_shape=(look_back,1)),
+                        LSTM(50),
+                        Dense(1)])
+    model.compile("adam", "mean_squared_error")
+    model.fit(X, y, epochs=5, batch_size=32, verbose=0)
+    X_pred = scaled[-look_back:].reshape(1, look_back, 1)
+    pred = scaler.inverse_transform(model.predict(X_pred))[0][0]
+    predictions[tick] = pred
+
+st.header("Predikert neste dag pris (NOK)")
+for t, p in predictions.items():
+    st.write(f"**{t.split('.')[0]}**: {p:.2f} kr")
+'''
+
+# requirements.txt
+requirements = '''streamlit
+yfinance
+pandas
+numpy
+scikit-learn
+tensorflow
+matplotlib
+'''
+
+# README.md
+readme = '''# Oslo Børs LSTM-prediksjon
+
+En Streamlit-app som viser neste dags forventet pris for de 10 største aksjene på Oslo Børs ved bruk av LSTM-nevrale nettverk.
+
+## Kjøring i skyen
+1. Last opp dette repoet til GitHub
+2. Gå til https://streamlit.io/cloud
+3. Koble til GitHub, velg dette repoet og `app.py` som hovedfil
+4. Deploy – appen er live!
+
+## Avhengigheter
+Se `requirements.txt`
+'''
+
+# Skriv filene
+(project_dir / "app.py").write_text(app_code)
+(project_dir / "requirements.txt").write_text(requirements)
+(project_dir / "README.md").write_text(readme)
+
+# Lag ZIP-fil
+with ZipFile("oslobors-lstm-predictor.zip", "w") as zipf:
+    for file_path in project_dir.iterdir():
+        zipf.write(file_path, arcname=file_path.name)
+
